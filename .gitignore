@@ -24,5 +24,5 @@ __pycache__
 .pydevenv
 build
 src/rune.runtime.egg-info
-rune.runtime-*.whl
+rune_runtime-*.whl
 src/rune/runtime/version.py
