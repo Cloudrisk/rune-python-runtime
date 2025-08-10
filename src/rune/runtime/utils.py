@@ -3,8 +3,11 @@ from __future__ import annotations
 import logging
 import keyword
 import inspect
+import re
 from enum import Enum
 from typing import Callable, Any
+from zoneinfo import ZoneInfo
+from datetime import datetime
 
 __all__ = [
     'if_cond_fn', 'Multiprop', 'rune_any_elements', 'rune_get_only_element',
@@ -12,7 +15,7 @@ __all__ = [
     'rune_join', 'rune_flatten_list', 'rune_resolve_attr',
     'rune_resolve_deep_attr', 'rune_count', 'rune_attr_exists',
     '_get_rune_object', 'rune_set_attr', 'rune_add_attr',
-    'rune_check_cardinality', 'rune_str', 'rune_check_one_of'
+    'rune_check_cardinality', 'rune_str', 'rune_check_one_of','rune_zoned_date_time'
 ]
 
 
@@ -131,6 +134,47 @@ def rune_str(x: Any) -> str:
     if isinstance(x, Enum):
         x = x.value
     return str(x)
+
+
+def rune_zoned_date_time(x: str):
+    """
+    Parse a datetime string with optional offset and/or named time zone
+    """
+    #Separate str in parts (date, time , offset, zone)
+    parts = x.strip().split()
+
+    # Try parsing last part as a zone name
+    possible_tz = parts[-1]
+    try:
+        zone = ZoneInfo(possible_tz)
+        parts = parts[:-1]  # Remove the zone name from the string
+    except:
+        zone = None
+
+    # Datetime object with date, time and offset
+    cleaned_input = " ".join(parts)
+
+    # Parse datetime
+    try:
+        dt = datetime.strptime(cleaned_input, "%Y-%m-%d %H:%M:%S %z")
+        has_offset = True
+    except ValueError:
+        dt = datetime.strptime(cleaned_input, "%Y-%m-%d %H:%M:%S")
+        has_offset = False
+
+    # Apply zone if valid
+    if zone:
+        if has_offset:
+            input_offset = dt.utcoffset()
+            zone_offset = dt.replace(tzinfo=zone).utcoffset()
+            if input_offset != zone_offset:
+                raise ValueError(
+                    f"Offset {input_offset} does not match zone '{zone.key}' ({zone_offset})"
+                )
+        dt = dt.replace(tzinfo=zone)
+
+    return dt
+
 
 
 def _get_rune_object(base_model: str, attribute: str, value: Any) -> Any:
