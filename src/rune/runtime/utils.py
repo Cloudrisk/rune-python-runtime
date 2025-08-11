@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 import keyword
 import inspect
-import re
+import datetime
 from enum import Enum
 from typing import Callable, Any
-from zoneinfo import ZoneInfo
-from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from dateutil import parser
 
 __all__ = [
     'if_cond_fn', 'Multiprop', 'rune_any_elements', 'rune_get_only_element',
@@ -15,7 +15,8 @@ __all__ = [
     'rune_join', 'rune_flatten_list', 'rune_resolve_attr',
     'rune_resolve_deep_attr', 'rune_count', 'rune_attr_exists',
     '_get_rune_object', 'rune_set_attr', 'rune_add_attr',
-    'rune_check_cardinality', 'rune_str', 'rune_check_one_of','rune_zoned_date_time'
+    'rune_check_cardinality', 'rune_str', 'rune_check_one_of',
+    'rune_zoned_date_time'
 ]
 
 
@@ -136,45 +137,61 @@ def rune_str(x: Any) -> str:
     return str(x)
 
 
-def rune_zoned_date_time(x: str):
+def rune_zoned_date_time(dt_str: str) -> datetime.datetime:
     """
-    Parse a datetime string with optional offset and/or named time zone
+    Return a `datetime` parsed from *dt_str*.
+
+    The input may contain:
+      • a bare date-time,  
+      • a numeric UTC offset (e.g. “+02:00”),  
+      • an IANA time-zone name (e.g. “Europe/Paris”), or  
+      • both offset **and** zone (the offset is validated against the zone).
+
+    Parameters
+    ----------
+    dt_str : str
+        Date/time string such as  
+        “2024-06-01 12:34:56 +05:30 Asia/Kolkata”.
+
+    Returns
+    -------
+    datetime.datetime
+        Time-zone-aware when an offset or zone is supplied, otherwise naive.
+
+    Raises
+    ------
+    ValueError
+        If the supplied offset contradicts the IANA zone.
+
+    Notes
+    -----
+    Parsing is delegated to `dateutil.parser.parse`; any of its
+    `ParserError`s propagate unchanged for malformed date fragments.
     """
-    #Separate str in parts (date, time , offset, zone)
-    parts = x.strip().split()
+    dt: datetime.datetime
+    extras: list[Any]
+    dt, extras = parser.parse(dt_str, fuzzy_with_tokens=True)  # type: ignore
 
-    # Try parsing last part as a zone name
-    possible_tz = parts[-1]
-    try:
-        zone = ZoneInfo(possible_tz)
-        parts = parts[:-1]  # Remove the zone name from the string
-    except:
-        zone = None
+    # Try every leftover token (strip commas/periods) for a ZoneInfo name
+    zone = None
+    for tok in extras:
+        tok = tok.strip(' ,.;')
+        if not tok:
+            continue
+        try:
+            if tok:
+                zone = ZoneInfo(tok)
+                break
+        except ZoneInfoNotFoundError:
+            continue
 
-    # Datetime object with date, time and offset
-    cleaned_input = " ".join(parts)
-
-    # Parse datetime
-    try:
-        dt = datetime.strptime(cleaned_input, "%Y-%m-%d %H:%M:%S %z")
-        has_offset = True
-    except ValueError:
-        dt = datetime.strptime(cleaned_input, "%Y-%m-%d %H:%M:%S")
-        has_offset = False
-
-    # Apply zone if valid
     if zone:
-        if has_offset:
-            input_offset = dt.utcoffset()
-            zone_offset = dt.replace(tzinfo=zone).utcoffset()
-            if input_offset != zone_offset:
-                raise ValueError(
-                    f"Offset {input_offset} does not match zone '{zone.key}' ({zone_offset})"
-                )
-        dt = dt.replace(tzinfo=zone)
+        # Same offset-matching logic as before …
+        if dt.tzinfo and dt.utcoffset() != dt.astimezone(zone).utcoffset():
+            raise ValueError("Offset mismatch …")
+        dt = dt.astimezone(zone) if dt.tzinfo else dt.replace(tzinfo=zone)
 
     return dt
-
 
 
 def _get_rune_object(base_model: str, attribute: str, value: Any) -> Any:
