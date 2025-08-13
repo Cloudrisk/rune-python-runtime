@@ -7,12 +7,15 @@ name = "rune.runtime"
 dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
-   "pydantic>=2.10.3"
+   "pydantic>=2.10.3",
+   "python-dateutil>=2.9.0.post0",
+   "tzdata>=2025.2"
 ]
 optional-dependencies.dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
-    "pytest-mock>=3.14.1"
+    "pytest-mock>=3.14.1",
+    "types-python-dateutil>=2.9.0.20250809"
 ]
 description = "rune-runtime: the Rune DSL runtime for Python"
 readme = "README.md"
